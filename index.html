@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ thống Đăng ký Nguyện vọng - dkmonhoc</title>
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; color: #1c1e21; }
+        .container { max-width: 900px; margin: auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.1); }
+        h1, h2, h3 { color: #1a73e8; text-align: center; }
+        .section { display: none; }
+        .section.active { display: block; }
+        
+        input, select, button, textarea { width: 100%; padding: 12px; margin-top: 10px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
+        button { background-color: #1a73e8; color: white; border: none; cursor: pointer; font-weight: bold; transition: background 0.3s; }
+        button:hover { background-color: #1557b0; }
+        .btn-danger { background-color: #d93025; }
+        .btn-danger:hover { background-color: #a51d16; }
+        .btn-success { background-color: #1e8e3e; }
+        .btn-success:hover { background-color: #137333; }
+
+        .alert { padding: 15px; background-color: #e8f0fe; color: #1967d2; margin: 20px 0; border-radius: 8px; border-left: 5px solid #1a73e8; }
+        .user-info-card { background: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #eee; margin-bottom: 25px; }
+        .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; }
+        
+        .collision-box { background: #fff4e5; border: 1px solid #ffa117; padding: 20px; border-radius: 8px; margin-top: 20px; }
+        hr { border: 0; border-top: 1px solid #eee; margin: 30px 0; }
+        label { font-weight: bold; display: block; margin-top: 15px; color: #5f6368; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Hệ Thống Đăng Ký Môn Học</h1>
+
+    <div id="login-section" class="section active">
+        <h2>Đăng Nhập</h2>
+        <p style="text-align: center; color: #663;">Nhập thông tin đăng nhập từ file Excel (Admin nhập: <b>admin</b>)</p>
+        <input type="text" id="loginId" placeholder="Thông tin đăng nhập của bạn...">
+        <button id="btnLogin">Đăng Nhập</button>
+
+        <div id="collision-form" class="collision-box" style="display: none;">
+            <h3 style="color: #e67e22; margin-top: 0;">Xác Minh Danh Tính</h3>
+            <p>Có nhiều người dùng cùng mã này. Vui lòng chọn thêm thông tin để xác nhận:</p>
+            
+            <div id="filter-school" style="display: none;">
+                <label>Trường của bạn:</label>
+                <select id="sel-school"></select>
+                <button id="btn-filter-school">Tiếp tục</button>
+            </div>
+            <div id="filter-class" style="display: none;">
+                <label>Lớp của bạn:</label>
+                <select id="sel-class"></select>
+                <button id="btn-filter-class">Tiếp tục</button>
+            </div>
+            <div id="filter-dob" style="display: none;">
+                <label>Ngày sinh của bạn:</label>
+                <select id="sel-dob"></select>
+                <button id="btn-filter-dob">Hoàn tất đăng nhập</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="admin-section" class="section">
+        <button id="btnLogoutAdmin" class="btn-danger" style="width: auto; float: right;">Đăng xuất</button>
+        <h2>Bảng Điều Khiển Admin</h2>
+        
+        <div class="user-info-card">
+            <h3>Tải Danh Sách Học Sinh (Excel)</h3>
+            <p>Cấu trúc: Cột A(Mã đăng nhập), B(Họ tên), C(Trường), D(Lớp), E(Ngày sinh), F(Giới tính)</p>
+            <input type="file" id="excelFile" accept=".xlsx, .xls">
+            <button id="btnUploadExcel">Bắt đầu tải lên Firestore</button>
+        </div>
+
+        <div class="user-info-card">
+            <h3>Thông Báo Hệ Thống</h3>
+            <textarea id="adminMessage" rows="3" placeholder="Nhập lời chào hoặc thông báo cho học sinh..."></textarea>
+            <button id="btnSaveMessage">Cập nhật thông báo</button>
+        </div>
+
+        <div class="user-info-card">
+            <h3>Xuất Dữ Liệu Đăng Ký</h3>
+            <p>Tải về file Excel chứa toàn bộ thông tin học sinh và các nguyện vọng đã chọn.</p>
+            <button id="btnExportExcel" class="btn-success">Tải File Kết Quả (.xlsx)</button>
+        </div>
+    </div>
+
+    <div id="student-section" class="section">
+        <button id="btnLogoutStudent" class="btn-danger" style="width: auto; float: right;">Đăng xuất</button>
+        <h2>Xin chào, <span id="display-name" style="color: #1a73e8;"></span></h2>
+        
+        <div id="announcement-box" class="alert">
+            <strong>Thông báo:</strong> <span id="display-message">...</span>
+        </div>
+
+        <div class="user-info-card">
+            <div class="grid-3">
+                <div><strong>Trường:</strong> <br><span id="display-school"></span></div>
+                <div><strong>Lớp:</strong> <br><span id="display-class"></span></div>
+                <div><strong>Ngày sinh:</strong> <br><span id="display-dob"></span></div>
+            </div>
+        </div>
+
+        <h3>Chọn Nguyện Vọng Tổ Hợp Môn</h3>
+        <p><i>* Các nguyện vọng không được trùng lặp tổ hợp môn.</i></p>
+        <div class="grid-3">
+            <div>
+                <label>Nguyện vọng 1</label>
+                <select id="nv1">
+                    <option value="">-- Chọn --</option>
+                    <option value="TH1">TH1</option><option value="TH2">TH2</option>
+                    <option value="TH3">TH3</option><option value="TH4">TH4</option>
+                </select>
+            </div>
+            <div>
+                <label>Nguyện vọng 2</label>
+                <select id="nv2">
+                    <option value="">-- Chọn --</option>
+                    <option value="TH1">TH1</option><option value="TH2">TH2</option>
+                    <option value="TH3">TH3</option><option value="TH4">TH4</option>
+                </select>
+            </div>
+            <div>
+                <label>Nguyện vọng 3</label>
+                <select id="nv3">
+                    <option value="">-- Chọn --</option>
+                    <option value="TH1">TH1</option><option value="TH2">TH2</option>
+                    <option value="TH3">TH3</option><option value="TH4">TH4</option>
+                </select>
+            </div>
+        </div>
+        <button id="btnSaveNV" class="btn-success" style="margin-top: 20px;">Lưu Đăng Ký</button>
+
+        <hr>
+        <h3>Cài Đặt Tài Khoản</h3>
+        <label>Đổi thông tin đăng nhập (Mã đăng nhập mới):</label>
+        <input type="text" id="newLoginId" placeholder="Nhập mã mới...">
+        <button id="btnChangeLogin">Cập Nhật Mã Đăng Nhập</button>
+    </div>
+
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-app.js";
+    import { getFirestore, collection, addDoc, getDocs, query, where, updateDoc, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore.js";
+
+    // CẤU HÌNH FIREBASE CỦA BẠN
+    const firebaseConfig = {
+      apiKey: "AIzaSyCX1OJZbxFPgK3o03SutHR2EpsNVe7IXDs",
+      authDomain: "dkmonhoc.firebaseapp.com",
+      projectId: "dkmonhoc",
+      storageBucket: "dkmonhoc.firebasestorage.app",
+      messagingSenderId: "690472797741",
+      appId: "1:690472797741:web:641343815ba669e5819aa4"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    let currentUserDocId = null;
+    let currentUserData = null;
+    let candidateUsers = [];
+
+    // HÀM ĐIỀU HƯỚNG
+    function showView(viewId) {
+        document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+        document.getElementById(viewId).classList.add('active');
+    }
+
+    // --- LOGIC ĐĂNG NHẬP ---
+    document.getElementById('btnLogin').addEventListener('click', async () => {
+        const id = document.getElementById('loginId').value.trim();
+        if (!id) return alert("Vui lòng nhập mã!");
+
+        if (id.toLowerCase() === 'admin') {
+            showView('admin-section');
+            loadAdminSettings();
+            return;
+        }
+
+        const q = query(collection(db, "students"), where("loginId", "==", id));
+        const snap = await getDocs(q);
+        
+        if (snap.empty) return alert("Không tìm thấy mã đăng nhập này!");
+
+        candidateUsers = [];
+        snap.forEach(d => candidateUsers.push({ id: d.id, ...d.data() }));
+
+        if (candidateUsers.length === 1) {
+            loginAsStudent(candidateUsers[0]);
+        } else {
+            document.getElementById('collision-form').style.display = 'block';
+            resolveCollision('school');
+        }
+    });
+
+    // --- XỬ LÝ TRÙNG LẶP ---
+    function resolveCollision(step) {
+        document.getElementById('filter-school').style.display = 'none';
+        document.getElementById('filter-class').style.display = 'none';
+        document.getElementById('filter-dob').style.display = 'none';
+
+        if(step === 'school') {
+            const schools = [...new Set(candidateUsers.map(u => u.school))];
+            if(schools.length > 1) {
+                fillSelect('sel-school', schools);
+                document.getElementById('filter-school').style.display = 'block';
+            } else { resolveCollision('class'); }
+        } else if(step === 'class') {
+            const classes = [...new Set(candidateUsers.map(u => u.className))];
+            if(classes.length > 1) {
+                fillSelect('sel-class', classes);
+                document.getElementById('filter-class').style.display = 'block';
+            } else { resolveCollision('dob'); }
+        } else {
+            fillSelect('sel-dob', [...new Set(candidateUsers.map(u => u.dob))]);
+            document.getElementById('filter-dob').style.display = 'block';
+        }
+    }
+
+    function fillSelect(id, items) {
+        const s = document.getElementById(id);
+        s.innerHTML = '<option value="">-- Chọn --</option>';
+        items.forEach(i => s.innerHTML += `<option value="${i}">${i}</option>`);
+    }
+
+    document.getElementById('btn-filter-school').onclick = () => filterCandidates('school', 'sel-school', 'class');
+    document.getElementById('btn-filter-class').onclick = () => filterCandidates('className', 'sel-class', 'dob');
+    document.getElementById('btn-filter-dob').onclick = () => filterCandidates('dob', 'sel-dob', 'done');
+
+    function filterCandidates(field, selId, next) {
+        const val = document.getElementById(selId).value;
+        if(!val) return;
+        candidateUsers = candidateUsers.filter(u => u[field] == val);
+        if(candidateUsers.length === 1) loginAsStudent(candidateUsers[0]);
+        else resolveCollision(next);
+    }
+
+    // --- LOGIC HỌC SINH ---
+    async function loginAsStudent(user) {
+        currentUserDocId = user.id;
+        currentUserData = user;
+        document.getElementById('display-name').innerText = user.fullName;
+        document.getElementById('display-school').innerText = user.school;
+        document.getElementById('display-class').innerText = user.className;
+        document.getElementById('display-dob').innerText = user.dob;
+        document.getElementById('nv1').value = user.nv1 || '';
+        document.getElementById('nv2').value = user.nv2 || '';
+        document.getElementById('nv3').value = user.nv3 || '';
+
+        const settings = await getDoc(doc(db, "admin", "settings"));
+        document.getElementById('display-message').innerText = settings.exists() ? settings.data().announcement : "Chào mừng bạn!";
+        
+        document.getElementById('collision-form').style.display = 'none';
+        showView('student-section');
+    }
+
+    document.getElementById('btnSaveNV').onclick = async () => {
+        const nvs = [document.getElementById('nv1').value, document.getElementById('nv2').value, document.getElementById('nv3').value];
+        if(nvs.includes("")) return alert("Vui lòng chọn đủ 3 nguyện vọng!");
+        if(new Set(nvs).size !== 3) return alert("Các nguyện vọng không được trùng tổ hợp môn!");
+
+        await updateDoc(doc(db, "students", currentUserDocId), { nv1: nvs[0], nv2: nvs[1], nv3: nvs[2] });
+        alert("Đã lưu đăng ký thành công!");
+    };
+
+    document.getElementById('btnChangeLogin').onclick = async () => {
+        const newId = document.getElementById('newLoginId').value.trim();
+        if(!newId) return;
+        await updateDoc(doc(db, "students", currentUserDocId), { loginId: newId });
+        alert("Đã đổi mã đăng nhập thành công!");
+    };
+
+    // --- LOGIC ADMIN ---
+    async function loadAdminSettings() {
+        const d = await getDoc(doc(db, "admin", "settings"));
+        if(d.exists()) document.getElementById('adminMessage').value = d.data().announcement;
+    }
+
+    document.getElementById('btnSaveMessage').onclick = async () => {
+        await setDoc(doc(db, "admin", "settings"), { announcement: document.getElementById('adminMessage').value });
+        alert("Đã cập nhật thông báo!");
+    };
+
+    document.getElementById('btnUploadExcel').onclick = () => {
+        const file = document.getElementById('excelFile').files[0];
+        if(!file) return alert("Chọn file!");
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            const data = new Uint8Array(e.target.result);
+            const wb = XLSX.read(data, {type: 'array'});
+            const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header: 1});
+            for(let i=1; i<rows.length; i++) {
+                const r = rows[i];
+                if(!r[0]) continue;
+                await addDoc(collection(db, "students"), {
+                    loginId: String(r[0]), fullName: r[1]||'', school: r[2]||'', className: r[3]||'', dob: String(r[4]||''), gender: r[5]||'', nv1:'', nv2:'', nv3:''
+                });
+            }
+            alert("Tải lên hoàn tất!");
+        };
+        reader.readAsArrayBuffer(file);
+    };
+
+    document.getElementById('btnExportExcel').onclick = async () => {
+        const snap = await getDocs(collection(db, "students"));
+        const data = snap.docs.map(d => ({
+            "Mã ĐN": d.data().loginId, "Họ Tên": d.data().fullName, "Trường": d.data().school, "Lớp": d.data().className, 
+            "Ngày sinh": d.data().dob, "Giới tính": d.data().gender, "NV1": d.data().nv1, "NV2": d.data().nv2, "NV3": d.data().nv3
+        }));
+        const ws = XLSX.utils.json_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "KetQua");
+        XLSX.writeFile(wb, "KetQua_DangKy.xlsx");
+    };
+
+    // ĐĂNG XUẤT
+    const logout = () => { currentUserDocId = null; showView('login-section'); document.getElementById('loginId').value=''; };
+    document.getElementById('btnLogoutAdmin').onclick = logout;
+    document.getElementById('btnLogoutStudent').onclick = logout;
+</script>
+</body>
+</html>
