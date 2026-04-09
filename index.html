@@ -28,7 +28,7 @@
         .collision-box { background: #fff4e5; border: 1px solid #ffa117; padding: 20px; border-radius: 8px; margin-top: 20px; }
         hr { border: 0; border-top: 1px solid #eee; margin: 30px 0; }
         label { font-weight: bold; display: block; margin-top: 15px; color: #5f6368; }
-        #upload-status { font-weight: bold; color: #d93025; margin-top: 10px; text-align: center; display: none; }
+        #upload-status { font-weight: bold; color: #d93025; margin-top: 15px; text-align: center; display: none; padding: 10px; background: #fce8e6; border-radius: 8px; }
     </style>
 </head>
 <body>
@@ -73,7 +73,7 @@
             <p>Cấu trúc Excel: Cột A(Mã), B(Họ tên), C(Trường), D(Lớp), E(Ngày sinh), F(Giới tính)</p>
             <input type="file" id="excelFile" accept=".xlsx, .xls">
             <button id="btnUploadExcel">Xóa dữ liệu cũ & Tải lên dữ liệu mới</button>
-            <div id="upload-status">Đang xử lý dữ liệu, vui lòng đợi...</div>
+            <div id="upload-status">Đang xử lý dữ liệu...</div>
         </div>
 
         <div class="user-info-card">
@@ -143,7 +143,8 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-app.js";
-    import { getFirestore, collection, addDoc, getDocs, query, where, updateDoc, doc, setDoc, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore.js";
+    // Đã import thêm writeBatch để tối ưu tốc độ
+    import { getFirestore, collection, getDocs, query, where, updateDoc, doc, setDoc, getDoc, writeBatch } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore.js";
 
     // CẤU HÌNH FIREBASE
     const firebaseConfig = {
@@ -159,7 +160,6 @@
     const db = getFirestore(app);
 
     let currentUserDocId = null;
-    let currentUserData = null;
     let candidateUsers = [];
 
     function showView(viewId) {
@@ -185,9 +185,8 @@
 
         candidateUsers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-        if (candidateUsers.length === 1) {
-            loginAsStudent(candidateUsers[0]);
-        } else {
+        if (candidateUsers.length === 1) loginAsStudent(candidateUsers[0]);
+        else {
             document.getElementById('collision-form').style.display = 'block';
             resolveCollision('school');
         }
@@ -201,16 +200,12 @@
 
         if(step === 'school') {
             const schools = [...new Set(candidateUsers.map(u => u.school))];
-            if(schools.length > 1) {
-                fillSelect('sel-school', schools);
-                document.getElementById('filter-school').style.display = 'block';
-            } else resolveCollision('class');
+            if(schools.length > 1) { fillSelect('sel-school', schools); document.getElementById('filter-school').style.display = 'block'; } 
+            else resolveCollision('class');
         } else if(step === 'class') {
             const classes = [...new Set(candidateUsers.map(u => u.className))];
-            if(classes.length > 1) {
-                fillSelect('sel-class', classes);
-                document.getElementById('filter-class').style.display = 'block';
-            } else resolveCollision('dob');
+            if(classes.length > 1) { fillSelect('sel-class', classes); document.getElementById('filter-class').style.display = 'block'; } 
+            else resolveCollision('dob');
         } else {
             fillSelect('sel-dob', [...new Set(candidateUsers.map(u => u.dob))]);
             document.getElementById('filter-dob').style.display = 'block';
@@ -254,53 +249,94 @@
         const nvs = [document.getElementById('nv1').value, document.getElementById('nv2').value, document.getElementById('nv3').value];
         if(nvs.includes("") || new Set(nvs).size !== 3) return alert("Vui lòng chọn đủ 3 nguyện vọng không trùng nhau!");
         await updateDoc(doc(db, "students", currentUserDocId), { nv1: nvs[0], nv2: nvs[1], nv3: nvs[2] });
-        alert("Lưu thành công!");
+        alert("Lưu nguyện vọng thành công!");
     };
 
-    // ADMIN LOGIC (EXCEL & CLEAR DATA)
+    document.getElementById('btnChangeLogin').onclick = async () => {
+        const newId = document.getElementById('newLoginId').value.trim();
+        if(!newId) return;
+        await updateDoc(doc(db, "students", currentUserDocId), { loginId: newId });
+        alert("Đổi mã đăng nhập thành công!");
+    };
+
+    // ADMIN LOGIC (EXCEL BATCH PROCESSING)
     document.getElementById('btnUploadExcel').onclick = async () => {
         const file = document.getElementById('excelFile').files[0];
         if(!file) return alert("Vui lòng chọn file Excel!");
-
-        if(!confirm("Hệ thống sẽ XÓA HẾT dữ liệu học sinh cũ để tải dữ liệu mới. Bạn có chắc chắn?")) return;
+        if(!confirm("Hệ thống sẽ XÓA HẾT dữ liệu học sinh cũ. Bạn có chắc chắn?")) return;
 
         const statusLabel = document.getElementById('upload-status');
         const btn = document.getElementById('btnUploadExcel');
         btn.disabled = true;
         statusLabel.style.display = 'block';
+        statusLabel.innerText = "⏳ Đang xóa sạch dữ liệu cũ... (Tốc độ cao)";
 
         try {
-            // 1. Xóa toàn bộ dữ liệu trong collection "students"
+            // 1. XÓA BẰNG BATCH (Ghi theo lô)
             const qSnap = await getDocs(collection(db, "students"));
-            const deletePromises = qSnap.docs.map(d => deleteDoc(doc(db, "students", d.id)));
-            await Promise.all(deletePromises);
-            console.log("Đã xóa sạch dữ liệu cũ.");
+            let batch = writeBatch(db);
+            let deleteCount = 0;
+            
+            for (const document of qSnap.docs) {
+                batch.delete(document.ref);
+                deleteCount++;
+                if (deleteCount === 500) {
+                    await batch.commit();
+                    batch = writeBatch(db);
+                    deleteCount = 0;
+                }
+            }
+            if (deleteCount > 0) await batch.commit();
 
-            // 2. Đọc file Excel và tải lên
+            statusLabel.innerText = "⏳ Đang đọc và nạp dữ liệu Excel mới...";
+
+            // 2. ĐỌC VÀ NẠP BẰNG BATCH
             const reader = new FileReader();
             reader.onload = async (e) => {
-                const data = new Uint8Array(e.target.result);
-                const wb = XLSX.read(data, {type: 'array'});
-                const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header: 1});
-                
-                let count = 0;
-                for(let i=1; i<rows.length; i++) {
-                    const r = rows[i];
-                    if(!r[0]) continue;
-                    await addDoc(collection(db, "students"), {
-                        loginId: String(r[0]), fullName: r[1]||'', school: r[2]||'', className: r[3]||'', dob: String(r[4]||''), gender: r[5]||'', nv1:'', nv2:'', nv3:''
-                    });
-                    count++;
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const wb = XLSX.read(data, {type: 'array'});
+                    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header: 1});
+                    
+                    let addBatch = writeBatch(db);
+                    let addCount = 0;
+                    let totalAdd = 0;
+
+                    for(let i=1; i<rows.length; i++) {
+                        const r = rows[i];
+                        if(!r[0]) continue;
+                        
+                        const newDocRef = doc(collection(db, "students"));
+                        addBatch.set(newDocRef, {
+                            loginId: String(r[0]), fullName: r[1]||'', school: r[2]||'', className: r[3]||'', dob: String(r[4]||''), gender: r[5]||'', nv1:'', nv2:'', nv3:''
+                        });
+
+                        addCount++;
+                        totalAdd++;
+
+                        if (addCount === 500) {
+                            await addBatch.commit();
+                            addBatch = writeBatch(db);
+                            addCount = 0;
+                        }
+                    }
+                    if (addCount > 0) await addBatch.commit();
+
+                    btn.disabled = false;
+                    statusLabel.style.display = 'none';
+                    alert(`✅ HOÀN TẤT! Đã xóa dữ liệu cũ và nạp thành công ${totalAdd} học sinh siêu tốc.`);
+                } catch(err) {
+                    console.error("Lỗi parse Excel:", err);
+                    alert("Có lỗi khi đọc định dạng file Excel!");
+                    btn.disabled = false;
+                    statusLabel.style.display = 'none';
                 }
-                btn.disabled = false;
-                statusLabel.style.display = 'none';
-                alert("Đã xóa dữ liệu cũ và TẢI LÊN HOÀN TẤT " + count + " học sinh!");
             };
             reader.readAsArrayBuffer(file);
 
         } catch (error) {
-            console.error(error);
-            alert("Có lỗi xảy ra trong quá trình xử lý!");
+            console.error("Lỗi Firestore:", error);
+            alert("Có lỗi kết nối cơ sở dữ liệu!");
             btn.disabled = false;
             statusLabel.style.display = 'none';
         }
