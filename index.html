@@ -34,6 +34,11 @@
 <body>
 
 <div class="container">
+    <div style="text-align: left; margin-bottom: 20px; line-height: 1.5; font-size: 15px;">
+        SỞ GIÁO DỤC VÀ ĐÀO TẠO ĐẮK LẮK<br>
+        <strong><u>TRƯỜNG THPT SỐ 1 TRẦN PHÚ</u></strong>
+    </div>
+
     <h1>Hệ Thống Đăng Ký Môn Học</h1>
 
     <div id="login-section" class="section active">
@@ -90,10 +95,6 @@
     <div id="student-section" class="section">
         <button id="btnLogoutStudent" class="btn-danger" style="width: auto; float: right;">Đăng xuất</button>
         <h2>Xin chào, <span id="display-name" style="color: #1a73e8;"></span></h2>
-        
-        <div id="announcement-box" class="alert">
-            <strong>Thông báo:</strong> <span id="display-message">...</span>
-        </div>
 
         <div class="user-info-card">
             <div class="grid-3">
@@ -132,6 +133,10 @@
         </div>
         <button id="btnSaveNV" class="btn-success" style="margin-top: 20px;">Lưu Đăng Ký</button>
 
+        <div id="announcement-box" class="alert">
+            <strong>Thông báo:</strong> <span id="display-message">...</span>
+        </div>
+
         <hr>
         <h3>Cài Đặt Tài Khoản</h3>
         <input type="text" id="newLoginId" placeholder="Nhập mã đăng nhập mới...">
@@ -145,7 +150,7 @@
     // Đã import thêm writeBatch để tối ưu tốc độ
     import { getFirestore, collection, getDocs, query, where, updateDoc, doc, setDoc, getDoc, writeBatch } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore.js";
 
-    // CẤU HÌNH FIREBASE
+    // CAU HINH FIREBASE
     const firebaseConfig = {
       apiKey: "AIzaSyCX1OJZbxFPgK3o03SutHR2EpsNVe7IXDs",
       authDomain: "dkmonhoc.firebaseapp.com",
@@ -271,7 +276,7 @@
         statusLabel.innerText = "⏳ Đang xóa sạch dữ liệu cũ... (Tốc độ cao)";
 
         try {
-            // 1. XÓA BẰNG BATCH (Ghi theo lô)
+            // 1. XOA BANG BATCH (Ghi theo lo)
             const qSnap = await getDocs(collection(db, "students"));
             let batch = writeBatch(db);
             let deleteCount = 0;
@@ -289,7 +294,7 @@
 
             statusLabel.innerText = "⏳ Đang đọc và nạp dữ liệu Excel mới...";
 
-            // 2. ĐỌC VÀ NẠP BẰNG BATCH
+            // 2. DOC VA NAP BANG BATCH
             const reader = new FileReader();
             reader.onload = async (e) => {
                 try {
