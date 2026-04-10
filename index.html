@@ -33,6 +33,9 @@
         hr { border: 0; border-top: 1px solid #eee; margin: 30px 0; }
         label { font-weight: bold; display: block; margin-top: 15px; color: #5f6368; }
         #upload-status { font-weight: bold; color: #d93025; margin-top: 15px; text-align: center; display: none; padding: 10px; background: #fce8e6; border-radius: 8px; }
+        
+        .link-huong-dan { display: none; text-align: center; margin-bottom: 15px; color: #1a73e8; text-decoration: none; font-weight: bold; padding: 10px; background: #e8f0fe; border-radius: 8px; border: 1px dashed #1a73e8; }
+        .link-huong-dan:hover { background: #d2e3fc; }
     </style>
 </head>
 <body>
@@ -47,6 +50,8 @@
 
     <div id="login-section" class="section active">
         <h2>Đăng Nhập</h2>
+        <a id="linkHuongDan" class="link-huong-dan" href="#" target="_blank">👉 Nhấn vào đây để xem Hướng dẫn sử dụng</a>
+        
         <input type="text" id="loginId" placeholder="Thông tin đăng nhập của bạn...">
         <button id="btnLogin">Đăng Nhập</button>
 
@@ -88,6 +93,12 @@
             <h3>Thông Báo Hệ Thống</h3>
             <textarea id="adminMessage" rows="3" placeholder="Nhập lời chào, hướng dẫn hoặc thông báo cho học sinh..."></textarea>
             <button id="btnSaveMessage">Cập nhật thông báo</button>
+        </div>
+        
+        <div class="user-info-card">
+            <h3>Cài Đặt Hướng Dẫn Sử Dụng</h3>
+            <input type="text" id="inputLinkHuongDan" placeholder="Nhập đường link tài liệu hướng dẫn...">
+            <button id="btnLuuLink">Cập Nhật Link Hướng Dẫn</button>
         </div>
 
         <div class="user-info-card">
@@ -177,6 +188,18 @@
     let candidateUsers = [];
     let cachedAnnouncement = null;
 
+    // Tai link huong dan ngay khi mo trang
+    getDoc(doc(db, "admin", "settings")).then(d => {
+        if(d.exists()) {
+            cachedAnnouncement = d.data().announcement || "";
+            if (d.data().linkHuongDan) {
+                const theLink = document.getElementById('linkHuongDan');
+                theLink.href = d.data().linkHuongDan;
+                theLink.style.display = 'block';
+            }
+        }
+    }).catch(e => console.error("Loi tai cai dat he thong:", e));
+
     const toggleButtonState = (btnId, isLoading, text = 'Đang xử lý...') => {
         const btn = document.getElementById(btnId);
         if (isLoading) {
@@ -208,6 +231,8 @@
             if(d.exists()) {
                 if(d.data().adminLoginId) adminId = d.data().adminLoginId;
                 if(cachedAnnouncement === null) cachedAnnouncement = d.data().announcement || "";
+                
+                document.getElementById('inputLinkHuongDan').value = d.data().linkHuongDan || '';
             }
 
             if (id === adminId) {
@@ -327,6 +352,25 @@
     };
 
     // ADMIN LOGIC
+    document.getElementById('btnLuuLink').onclick = async () => {
+        toggleButtonState('btnLuuLink', true, 'Đang cập nhật...');
+        try {
+            const newVal = document.getElementById('inputLinkHuongDan').value.trim();
+            await setDoc(doc(db, "admin", "settings"), { linkHuongDan: newVal }, { merge: true });
+            
+            const theLink = document.getElementById('linkHuongDan');
+            if(newVal) {
+                theLink.href = newVal;
+                theLink.style.display = 'block';
+            } else {
+                theLink.style.display = 'none';
+            }
+            alert("Đã cập nhật link hướng dẫn thành công!");
+        } finally {
+            toggleButtonState('btnLuuLink', false);
+        }
+    };
+
     document.getElementById('btnChangeAdminLogin').onclick = async () => {
         const newId = document.getElementById('newAdminId').value.trim();
         if(!newId) return alert("Vui lòng nhập mã đăng nhập mới!");
@@ -443,7 +487,6 @@
         toggleButtonState('btnSaveMessage', true, 'Đang cập nhật...');
         try {
             const newVal = document.getElementById('adminMessage').value;
-            // Su dung merge: true de khong lam mat adminLoginId
             await setDoc(doc(db, "admin", "settings"), { announcement: newVal }, { merge: true });
             cachedAnnouncement = newVal;
             alert("Đã cập nhật thông báo!");
