@@ -94,6 +94,12 @@
             <h3>Xuất Dữ Liệu Đăng Ký</h3>
             <button id="btnExportExcel" class="btn-success">Tải File Kết Quả (.xlsx)</button>
         </div>
+
+        <div class="user-info-card">
+            <h3>Cài Đặt Tài Khoản Admin</h3>
+            <input type="text" id="newAdminId" placeholder="Nhập mã đăng nhập Admin mới...">
+            <button id="btnChangeAdminLogin">Cập Nhật Mã Đăng Nhập Admin</button>
+        </div>
     </div>
 
     <div id="student-section" class="section">
@@ -169,9 +175,8 @@
 
     let currentUserDocId = null;
     let candidateUsers = [];
-    let cachedAnnouncement = null; // Tối ưu: Bộ nhớ tạm cho thông báo
+    let cachedAnnouncement = null;
 
-    // Hàm phụ trợ giúp bật/tắt nút bấm, tránh spam click
     const toggleButtonState = (btnId, isLoading, text = 'Đang xử lý...') => {
         const btn = document.getElementById(btnId);
         if (isLoading) {
@@ -197,12 +202,16 @@
         toggleButtonState('btnLogin', true, 'Đang đăng nhập...');
 
         try {
-            if (id.toLowerCase() === 'admin') {
+            // Check admin login first
+            const d = await getDoc(doc(db, "admin", "settings"));
+            let adminId = 'admin'; // Default admin id
+            if(d.exists()) {
+                if(d.data().adminLoginId) adminId = d.data().adminLoginId;
+                if(cachedAnnouncement === null) cachedAnnouncement = d.data().announcement || "";
+            }
+
+            if (id === adminId) {
                 showView('admin-section');
-                if (cachedAnnouncement === null) {
-                    const d = await getDoc(doc(db, "admin", "settings"));
-                    cachedAnnouncement = d.exists() ? d.data().announcement : "";
-                }
                 document.getElementById('adminMessage').value = cachedAnnouncement;
                 return;
             }
@@ -214,7 +223,7 @@
                 return;
             }
 
-            candidateUsers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            candidateUsers = snap.docs.map(studentDoc => ({ id: studentDoc.id, ...studentDoc.data() }));
 
             if (candidateUsers.length === 1) await loginAsStudent(candidateUsers[0]);
             else {
@@ -278,7 +287,6 @@
         document.getElementById('nv2').value = user.nv2 || '';
         document.getElementById('nv3').value = user.nv3 || '';
         
-        // Tối ưu: Chỉ tải cài đặt từ Firebase 1 lần và dùng lại
         if (cachedAnnouncement === null) {
             const settings = await getDoc(doc(db, "admin", "settings"));
             cachedAnnouncement = settings.exists() ? settings.data().announcement : "Chào mừng!";
@@ -318,7 +326,23 @@
         }
     };
 
-    // ADMIN LOGIC (EXCEL BATCH PROCESSING)
+    // ADMIN LOGIC
+    document.getElementById('btnChangeAdminLogin').onclick = async () => {
+        const newId = document.getElementById('newAdminId').value.trim();
+        if(!newId) return alert("Vui lòng nhập mã đăng nhập mới!");
+
+        toggleButtonState('btnChangeAdminLogin', true, 'Đang cập nhật...');
+        try {
+            await setDoc(doc(db, "admin", "settings"), { adminLoginId: newId }, { merge: true });
+            alert("Đổi mã đăng nhập Admin thành công!");
+            document.getElementById('newAdminId').value = '';
+        } catch (e) {
+            alert("Đổi mã thất bại!");
+        } finally {
+            toggleButtonState('btnChangeAdminLogin', false);
+        }
+    };
+
     document.getElementById('btnUploadExcel').onclick = async () => {
         const file = document.getElementById('excelFile').files[0];
         if(!file) return alert("Vui lòng chọn file Excel!");
@@ -419,8 +443,9 @@
         toggleButtonState('btnSaveMessage', true, 'Đang cập nhật...');
         try {
             const newVal = document.getElementById('adminMessage').value;
-            await setDoc(doc(db, "admin", "settings"), { announcement: newVal });
-            cachedAnnouncement = newVal; // Cập nhật cache
+            // Su dung merge: true de khong lam mat adminLoginId
+            await setDoc(doc(db, "admin", "settings"), { announcement: newVal }, { merge: true });
+            cachedAnnouncement = newVal;
             alert("Đã cập nhật thông báo!");
         } finally {
             toggleButtonState('btnSaveMessage', false);
