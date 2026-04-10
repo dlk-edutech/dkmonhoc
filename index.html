@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hệ thống Đăng ký Nguyện vọng - dkmonhoc</title>
+    
+    <link rel="preconnect" href="https://www.gstatic.com">
+    <link rel="preconnect" href="https://unpkg.com">
+    
     <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; color: #1c1e21; }
@@ -82,7 +86,7 @@
 
         <div class="user-info-card">
             <h3>Thông Báo Hệ Thống</h3>
-            <textarea id="adminMessage" rows="3" placeholder="Nhập lời chào hoặc thông báo cho học sinh..."></textarea>
+            <textarea id="adminMessage" rows="3" placeholder="Nhập lời chào, hướng dẫn hoặc thông báo cho học sinh..."></textarea>
             <button id="btnSaveMessage">Cập nhật thông báo</button>
         </div>
 
@@ -105,6 +109,11 @@
         </div>
 
         <h3>Chọn Nguyện Vọng Tổ Hợp Môn</h3>
+
+        <div id="announcement-box" class="alert">
+            <span id="display-message">...</span>
+        </div>
+
         <div class="grid-3">
             <div>
                 <label>Nguyện vọng 1</label>
@@ -133,10 +142,6 @@
         </div>
         <button id="btnSaveNV" class="btn-success" style="margin-top: 20px;">Lưu Đăng Ký</button>
 
-        <div id="announcement-box" class="alert">
-            <strong>Thông báo:</strong> <span id="display-message">...</span>
-        </div>
-
         <hr>
         <h3>Cài Đặt Tài Khoản</h3>
         <input type="text" id="newLoginId" placeholder="Nhập mã đăng nhập mới...">
@@ -147,7 +152,6 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-app.js";
-    // Đã import thêm writeBatch để tối ưu tốc độ
     import { getFirestore, collection, getDocs, query, where, updateDoc, doc, setDoc, getDoc, writeBatch } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore.js";
 
     // CAU HINH FIREBASE
@@ -165,6 +169,20 @@
 
     let currentUserDocId = null;
     let candidateUsers = [];
+    let cachedAnnouncement = null; // Tối ưu: Bộ nhớ tạm cho thông báo
+
+    // Hàm phụ trợ giúp bật/tắt nút bấm, tránh spam click
+    const toggleButtonState = (btnId, isLoading, text = 'Đang xử lý...') => {
+        const btn = document.getElementById(btnId);
+        if (isLoading) {
+            btn.dataset.originalText = btn.innerText;
+            btn.innerText = text;
+            btn.disabled = true;
+        } else {
+            btn.innerText = btn.dataset.originalText || btn.innerText;
+            btn.disabled = false;
+        }
+    };
 
     function showView(viewId) {
         document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
@@ -176,23 +194,38 @@
         const id = document.getElementById('loginId').value.trim();
         if (!id) return alert("Vui lòng nhập mã!");
 
-        if (id.toLowerCase() === 'admin') {
-            showView('admin-section');
-            const d = await getDoc(doc(db, "admin", "settings"));
-            if(d.exists()) document.getElementById('adminMessage').value = d.data().announcement;
-            return;
-        }
+        toggleButtonState('btnLogin', true, 'Đang đăng nhập...');
 
-        const q = query(collection(db, "students"), where("loginId", "==", id));
-        const snap = await getDocs(q);
-        if (snap.empty) return alert("Không tìm thấy mã đăng nhập!");
+        try {
+            if (id.toLowerCase() === 'admin') {
+                showView('admin-section');
+                if (cachedAnnouncement === null) {
+                    const d = await getDoc(doc(db, "admin", "settings"));
+                    cachedAnnouncement = d.exists() ? d.data().announcement : "";
+                }
+                document.getElementById('adminMessage').value = cachedAnnouncement;
+                return;
+            }
 
-        candidateUsers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const q = query(collection(db, "students"), where("loginId", "==", id));
+            const snap = await getDocs(q);
+            if (snap.empty) {
+                alert("Không tìm thấy mã đăng nhập!");
+                return;
+            }
 
-        if (candidateUsers.length === 1) loginAsStudent(candidateUsers[0]);
-        else {
-            document.getElementById('collision-form').style.display = 'block';
-            resolveCollision('school');
+            candidateUsers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+            if (candidateUsers.length === 1) await loginAsStudent(candidateUsers[0]);
+            else {
+                document.getElementById('collision-form').style.display = 'block';
+                resolveCollision('school');
+            }
+        } catch (error) {
+            console.error(error);
+            alert("Có lỗi kết nối máy chủ!");
+        } finally {
+            toggleButtonState('btnLogin', false);
         }
     });
 
@@ -244,23 +277,45 @@
         document.getElementById('nv1').value = user.nv1 || '';
         document.getElementById('nv2').value = user.nv2 || '';
         document.getElementById('nv3').value = user.nv3 || '';
-        const settings = await getDoc(doc(db, "admin", "settings"));
-        document.getElementById('display-message').innerText = settings.exists() ? settings.data().announcement : "Chào mừng!";
+        
+        // Tối ưu: Chỉ tải cài đặt từ Firebase 1 lần và dùng lại
+        if (cachedAnnouncement === null) {
+            const settings = await getDoc(doc(db, "admin", "settings"));
+            cachedAnnouncement = settings.exists() ? settings.data().announcement : "Chào mừng!";
+        }
+        document.getElementById('display-message').innerText = cachedAnnouncement;
         showView('student-section');
     }
 
     document.getElementById('btnSaveNV').onclick = async () => {
         const nvs = [document.getElementById('nv1').value, document.getElementById('nv2').value, document.getElementById('nv3').value];
         if(nvs.includes("") || new Set(nvs).size !== 3) return alert("Vui lòng chọn đủ 3 nguyện vọng không trùng nhau!");
-        await updateDoc(doc(db, "students", currentUserDocId), { nv1: nvs[0], nv2: nvs[1], nv3: nvs[2] });
-        alert("Lưu nguyện vọng thành công!");
+        
+        toggleButtonState('btnSaveNV', true, 'Đang lưu...');
+        try {
+            await updateDoc(doc(db, "students", currentUserDocId), { nv1: nvs[0], nv2: nvs[1], nv3: nvs[2] });
+            alert("Lưu nguyện vọng thành công!");
+        } catch (e) {
+            alert("Lưu thất bại, kiểm tra lại mạng!");
+        } finally {
+            toggleButtonState('btnSaveNV', false);
+        }
     };
 
     document.getElementById('btnChangeLogin').onclick = async () => {
         const newId = document.getElementById('newLoginId').value.trim();
         if(!newId) return;
-        await updateDoc(doc(db, "students", currentUserDocId), { loginId: newId });
-        alert("Đổi mã đăng nhập thành công!");
+
+        toggleButtonState('btnChangeLogin', true, 'Đang cập nhật...');
+        try {
+            await updateDoc(doc(db, "students", currentUserDocId), { loginId: newId });
+            alert("Đổi mã đăng nhập thành công!");
+            document.getElementById('newLoginId').value = '';
+        } catch (e) {
+            alert("Đổi mã thất bại!");
+        } finally {
+            toggleButtonState('btnChangeLogin', false);
+        }
     };
 
     // ADMIN LOGIC (EXCEL BATCH PROCESSING)
@@ -270,13 +325,11 @@
         if(!confirm("Hệ thống sẽ XÓA HẾT dữ liệu học sinh cũ. Bạn có chắc chắn?")) return;
 
         const statusLabel = document.getElementById('upload-status');
-        const btn = document.getElementById('btnUploadExcel');
-        btn.disabled = true;
+        toggleButtonState('btnUploadExcel', true, 'Đang tiến hành...');
         statusLabel.style.display = 'block';
         statusLabel.innerText = "⏳ Đang xóa sạch dữ liệu cũ... (Tốc độ cao)";
 
         try {
-            // 1. XOA BANG BATCH (Ghi theo lo)
             const qSnap = await getDocs(collection(db, "students"));
             let batch = writeBatch(db);
             let deleteCount = 0;
@@ -294,7 +347,6 @@
 
             statusLabel.innerText = "⏳ Đang đọc và nạp dữ liệu Excel mới...";
 
-            // 2. DOC VA NAP BANG BATCH
             const reader = new FileReader();
             reader.onload = async (e) => {
                 try {
@@ -326,13 +378,13 @@
                     }
                     if (addCount > 0) await addBatch.commit();
 
-                    btn.disabled = false;
+                    toggleButtonState('btnUploadExcel', false);
                     statusLabel.style.display = 'none';
                     alert(`✅ HOÀN TẤT! Đã xóa dữ liệu cũ và nạp thành công ${totalAdd} học sinh siêu tốc.`);
                 } catch(err) {
                     console.error("Lỗi parse Excel:", err);
                     alert("Có lỗi khi đọc định dạng file Excel!");
-                    btn.disabled = false;
+                    toggleButtonState('btnUploadExcel', false);
                     statusLabel.style.display = 'none';
                 }
             };
@@ -341,26 +393,38 @@
         } catch (error) {
             console.error("Lỗi Firestore:", error);
             alert("Có lỗi kết nối cơ sở dữ liệu!");
-            btn.disabled = false;
+            toggleButtonState('btnUploadExcel', false);
             statusLabel.style.display = 'none';
         }
     };
 
     document.getElementById('btnExportExcel').onclick = async () => {
-        const snap = await getDocs(collection(db, "students"));
-        const data = snap.docs.map(d => ({
-            "Mã ĐN": d.data().loginId, "Họ Tên": d.data().fullName, "Trường": d.data().school, "Lớp": d.data().className, 
-            "Ngày sinh": d.data().dob, "NV1": d.data().nv1, "NV2": d.data().nv2, "NV3": d.data().nv3
-        }));
-        const ws = XLSX.utils.json_to_sheet(data);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "KetQua");
-        XLSX.writeFile(wb, "KetQua_DangKy.xlsx");
+        toggleButtonState('btnExportExcel', true, 'Đang xuất file...');
+        try {
+            const snap = await getDocs(collection(db, "students"));
+            const data = snap.docs.map(d => ({
+                "Mã ĐN": d.data().loginId, "Họ Tên": d.data().fullName, "Trường": d.data().school, "Lớp": d.data().className, 
+                "Ngày sinh": d.data().dob, "NV1": d.data().nv1, "NV2": d.data().nv2, "NV3": d.data().nv3
+            }));
+            const ws = XLSX.utils.json_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "KetQua");
+            XLSX.writeFile(wb, "KetQua_DangKy.xlsx");
+        } finally {
+            toggleButtonState('btnExportExcel', false);
+        }
     };
 
     document.getElementById('btnSaveMessage').onclick = async () => {
-        await setDoc(doc(db, "admin", "settings"), { announcement: document.getElementById('adminMessage').value });
-        alert("Đã cập nhật thông báo!");
+        toggleButtonState('btnSaveMessage', true, 'Đang cập nhật...');
+        try {
+            const newVal = document.getElementById('adminMessage').value;
+            await setDoc(doc(db, "admin", "settings"), { announcement: newVal });
+            cachedAnnouncement = newVal; // Cập nhật cache
+            alert("Đã cập nhật thông báo!");
+        } finally {
+            toggleButtonState('btnSaveMessage', false);
+        }
     };
 
     const logout = () => { currentUserDocId = null; showView('login-section'); document.getElementById('loginId').value=''; };
