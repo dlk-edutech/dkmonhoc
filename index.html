@@ -34,7 +34,8 @@
         label { font-weight: bold; display: block; margin-top: 15px; color: #5f6368; }
         #upload-status { font-weight: bold; color: #d93025; margin-top: 15px; text-align: center; display: none; padding: 10px; background: #fce8e6; border-radius: 8px; }
         
-        .link-huong-dan { display: none; text-align: center; margin-bottom: 15px; color: #1a73e8; text-decoration: none; font-weight: bold; padding: 10px; background: #e8f0fe; border-radius: 8px; border: 1px dashed #1a73e8; }
+        /* Da bo display: none o day de khung khong bi giat khi load */
+        .link-huong-dan { display: block; text-align: center; margin-bottom: 15px; color: #1a73e8; text-decoration: none; font-weight: bold; padding: 10px; background: #e8f0fe; border-radius: 8px; border: 1px dashed #1a73e8; }
         .link-huong-dan:hover { background: #d2e3fc; }
     </style>
 </head>
@@ -198,14 +199,35 @@
     let candidateUsers = [];
     let cachedAnnouncement = null;
 
-    // Tai link huong dan ngay khi mo trang
+    // XU LY LOAD NHANH LINK HUONG DAN (Tranh bi giat giao dien)
+    const theLink = document.getElementById('linkHuongDan');
+    const savedLink = localStorage.getItem('savedLinkHuongDan');
+    
+    // Dung cache neu co de hien thi ngay lap tuc
+    if (savedLink) {
+        theLink.href = savedLink;
+    } else {
+        // Neu chua co cache, chan click vao link cho den khi tai xong
+        theLink.onclick = function(e) {
+            if (theLink.getAttribute('href') === '#') {
+                e.preventDefault();
+                alert('Đang tải đường link hướng dẫn, vui lòng đợi trong giây lát!');
+            }
+        };
+    }
+
+    // Dong bo du lieu moi tu Firebase
     getDoc(doc(db, "admin", "settings")).then(d => {
         if(d.exists()) {
             cachedAnnouncement = d.data().announcement || "";
             if (d.data().linkHuongDan) {
-                const theLink = document.getElementById('linkHuongDan');
                 theLink.href = d.data().linkHuongDan;
+                theLink.onclick = null; // Go bo lenh chan click
+                localStorage.setItem('savedLinkHuongDan', d.data().linkHuongDan); // Luu cache cho lan sau
                 theLink.style.display = 'block';
+            } else {
+                theLink.style.display = 'none'; // An link neu Admin chua cai dat
+                localStorage.removeItem('savedLinkHuongDan');
             }
         }
     }).catch(e => console.error("Loi tai cai dat he thong:", e));
@@ -381,12 +403,13 @@
             const newVal = document.getElementById('inputLinkHuongDan').value.trim();
             await setDoc(doc(db, "admin", "settings"), { linkHuongDan: newVal }, { merge: true });
             
-            const theLink = document.getElementById('linkHuongDan');
             if(newVal) {
                 theLink.href = newVal;
                 theLink.style.display = 'block';
+                localStorage.setItem('savedLinkHuongDan', newVal); // Cap nhat luon vao cache
             } else {
                 theLink.style.display = 'none';
+                localStorage.removeItem('savedLinkHuongDan'); // Xoa cache
             }
             alert("Đã cập nhật link hướng dẫn thành công!");
         } finally {
@@ -418,7 +441,7 @@
         const statusLabel = document.getElementById('upload-status');
         toggleButtonState('btnUploadExcel', true, 'Đang tiến hành...');
         statusLabel.style.display = 'block';
-        statusLabel.innerText = "⏳ Đang xóa sạch dữ liệu cũ... (Tốc độ cao)";
+        statusLabel.innerText = "⏳ Đang xóa sạch dữ liệu cũ...";
 
         try {
             const qSnap = await getDocs(collection(db, "students"));
@@ -493,7 +516,6 @@
         toggleButtonState('btnExportExcel', true, 'Đang xuất file...');
         try {
             const snap = await getDocs(collection(db, "students"));
-            // Them 2 cot SĐT va Thong tin them vao file export
             const data = snap.docs.map(d => ({
                 "Mã ĐN": d.data().loginId, 
                 "Họ Tên": d.data().fullName, 
