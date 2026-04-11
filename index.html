@@ -156,6 +156,17 @@
                 </select>
             </div>
         </div>
+        
+        <div style="margin-top: 15px;">
+            <label>Số điện thoại liên lạc</label>
+            <input type="text" id="sdt" placeholder="Nhập số điện thoại...">
+        </div>
+        
+        <div style="margin-top: 15px;">
+            <label>Thông tin thêm (Mong muốn, sở trường...)</label>
+            <textarea id="thongtinThem" rows="3" placeholder="Nhập mong muốn, sở trường của bạn..."></textarea>
+        </div>
+
         <button id="btnSaveNV" class="btn-success" style="margin-top: 20px;">Lưu Đăng Ký</button>
 
         <hr>
@@ -311,6 +322,10 @@
         document.getElementById('nv2').value = user.nv2 || '';
         document.getElementById('nv3').value = user.nv3 || '';
         
+        // Load du lieu cho hai o input moi
+        document.getElementById('sdt').value = user.sdt || '';
+        document.getElementById('thongtinThem').value = user.thongtinThem || '';
+        
         if (cachedAnnouncement === null) {
             const settings = await getDoc(doc(db, "admin", "settings"));
             cachedAnnouncement = settings.exists() ? settings.data().announcement : "Chào mừng!";
@@ -323,9 +338,18 @@
         const nvs = [document.getElementById('nv1').value, document.getElementById('nv2').value, document.getElementById('nv3').value];
         if(nvs.includes("") || new Set(nvs).size !== 3) return alert("Vui lòng chọn đủ 3 nguyện vọng không trùng nhau!");
         
+        const valSdt = document.getElementById('sdt').value.trim();
+        const valThongtinThem = document.getElementById('thongtinThem').value.trim();
+        
         toggleButtonState('btnSaveNV', true, 'Đang lưu...');
         try {
-            await updateDoc(doc(db, "students", currentUserDocId), { nv1: nvs[0], nv2: nvs[1], nv3: nvs[2] });
+            await updateDoc(doc(db, "students", currentUserDocId), { 
+                nv1: nvs[0], 
+                nv2: nvs[1], 
+                nv3: nvs[2],
+                sdt: valSdt,
+                thongtinThem: valThongtinThem
+            });
             alert("Lưu nguyện vọng thành công!");
         } catch (e) {
             alert("Lưu thất bại, kiểm tra lại mạng!");
@@ -431,7 +455,7 @@
                         
                         const newDocRef = doc(collection(db, "students"));
                         addBatch.set(newDocRef, {
-                            loginId: String(r[0]), fullName: r[1]||'', school: r[2]||'', className: r[3]||'', dob: String(r[4]||''), gender: r[5]||'', nv1:'', nv2:'', nv3:''
+                            loginId: String(r[0]), fullName: r[1]||'', school: r[2]||'', className: r[3]||'', dob: String(r[4]||''), gender: r[5]||'', nv1:'', nv2:'', nv3:'', sdt:'', thongtinThem:''
                         });
 
                         addCount++;
@@ -469,9 +493,18 @@
         toggleButtonState('btnExportExcel', true, 'Đang xuất file...');
         try {
             const snap = await getDocs(collection(db, "students"));
+            // Them 2 cot SĐT va Thong tin them vao file export
             const data = snap.docs.map(d => ({
-                "Mã ĐN": d.data().loginId, "Họ Tên": d.data().fullName, "Trường": d.data().school, "Lớp": d.data().className, 
-                "Ngày sinh": d.data().dob, "NV1": d.data().nv1, "NV2": d.data().nv2, "NV3": d.data().nv3
+                "Mã ĐN": d.data().loginId, 
+                "Họ Tên": d.data().fullName, 
+                "Trường": d.data().school, 
+                "Lớp": d.data().className, 
+                "Ngày sinh": d.data().dob, 
+                "NV1": d.data().nv1, 
+                "NV2": d.data().nv2, 
+                "NV3": d.data().nv3,
+                "SĐT": d.data().sdt || '',
+                "Thông tin thêm": d.data().thongtinThem || ''
             }));
             const ws = XLSX.utils.json_to_sheet(data);
             const wb = XLSX.utils.book_new();
