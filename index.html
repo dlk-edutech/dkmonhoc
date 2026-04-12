@@ -16,7 +16,7 @@
         .section { display: none; }
         .section.active { display: block; }
         
-        input, select, button, textarea { width: 100%; padding: 12px; margin-top: 10px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
+        input[type="text"], input[type="file"], select, button, textarea { width: 100%; padding: 12px; margin-top: 10px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
         button { background-color: #1a73e8; color: white; border: none; cursor: pointer; font-weight: bold; transition: background 0.3s; }
         button:hover { background-color: #1557b0; }
         button:disabled { background-color: #ccc; cursor: not-allowed; }
@@ -34,9 +34,12 @@
         label { font-weight: bold; display: block; margin-top: 15px; color: #5f6368; }
         #upload-status { font-weight: bold; color: #d93025; margin-top: 15px; text-align: center; display: none; padding: 10px; background: #fce8e6; border-radius: 8px; }
         
-        /* Da bo display: none o day de khung khong bi giat khi load */
         .link-huong-dan { display: block; text-align: center; margin-bottom: 15px; color: #1a73e8; text-decoration: none; font-weight: bold; padding: 10px; background: #e8f0fe; border-radius: 8px; border: 1px dashed #1a73e8; }
         .link-huong-dan:hover { background: #d2e3fc; }
+        
+        .radio-group { margin-top: 10px; margin-bottom: 15px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 8px; }
+        .radio-group label { display: inline-flex; align-items: center; font-weight: normal; margin-top: 0; margin-right: 20px; cursor: pointer; color: #1c1e21; }
+        .radio-group input[type="radio"] { width: auto; margin-top: 0; margin-right: 8px; }
     </style>
 </head>
 <body>
@@ -82,10 +85,18 @@
         
         <div class="user-info-card">
             <h3>Tải Danh Sách Học Sinh Mới</h3>
-            <p style="color: red;">⚠️ Lưu ý: Khi tải lên, TOÀN BỘ dữ liệu học sinh cũ sẽ bị xóa sạch.</p>
+            <div class="radio-group">
+                <label>
+                    <input type="radio" name="uploadMode" value="append" checked> Thêm dữ liệu (Giữ nguyên dữ liệu cũ)
+                </label>
+                <label>
+                    <input type="radio" name="uploadMode" value="replace"> Xóa toàn bộ dữ liệu cũ và nạp mới
+                </label>
+            </div>
+            <p id="uploadWarning" style="color: red; display: none; margin-top: 0;">⚠️ Lưu ý: Khi chọn chế độ này, TOÀN BỘ dữ liệu học sinh cũ sẽ bị xóa sạch.</p>
             <p>Cấu trúc Excel: Cột A(Mã), B(Họ tên), C(Trường), D(Lớp), E(Ngày sinh), F(Giới tính)</p>
             <input type="file" id="excelFile" accept=".xlsx, .xls">
-            <button id="btnUploadExcel">Xóa dữ liệu cũ & Tải lên dữ liệu mới</button>
+            <button id="btnUploadExcel">Tải lên dữ liệu mới</button>
             <div id="upload-status">Đang xử lý dữ liệu...</div>
         </div>
 
@@ -433,31 +444,55 @@
         }
     };
 
+    // Giao dien Radio tuy chon upload
+    const radios = document.querySelectorAll('input[name="uploadMode"]');
+    const uploadWarning = document.getElementById('uploadWarning');
+    const btnUploadExcel = document.getElementById('btnUploadExcel');
+
+    radios.forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            if (e.target.value === 'replace') {
+                uploadWarning.style.display = 'block';
+                btnUploadExcel.innerText = 'Xóa dữ liệu cũ & Tải lên dữ liệu mới';
+            } else {
+                uploadWarning.style.display = 'none';
+                btnUploadExcel.innerText = 'Tải lên dữ liệu mới';
+            }
+        });
+    });
+
     document.getElementById('btnUploadExcel').onclick = async () => {
         const file = document.getElementById('excelFile').files[0];
         if(!file) return alert("Vui lòng chọn file Excel!");
-        if(!confirm("Hệ thống sẽ XÓA HẾT dữ liệu học sinh cũ. Bạn có chắc chắn?")) return;
+        
+        const uploadMode = document.querySelector('input[name="uploadMode"]:checked').value;
+
+        if (uploadMode === 'replace') {
+            if(!confirm("Hệ thống sẽ XÓA HẾT dữ liệu học sinh cũ. Bạn có chắc chắn?")) return;
+        }
 
         const statusLabel = document.getElementById('upload-status');
         toggleButtonState('btnUploadExcel', true, 'Đang tiến hành...');
         statusLabel.style.display = 'block';
-        statusLabel.innerText = "⏳ Đang xóa sạch dữ liệu cũ...";
 
         try {
-            const qSnap = await getDocs(collection(db, "students"));
-            let batch = writeBatch(db);
-            let deleteCount = 0;
-            
-            for (const document of qSnap.docs) {
-                batch.delete(document.ref);
-                deleteCount++;
-                if (deleteCount === 500) {
-                    await batch.commit();
-                    batch = writeBatch(db);
-                    deleteCount = 0;
+            if (uploadMode === 'replace') {
+                statusLabel.innerText = "⏳ Đang xóa sạch dữ liệu cũ...";
+                const qSnap = await getDocs(collection(db, "students"));
+                let batch = writeBatch(db);
+                let deleteCount = 0;
+                
+                for (const document of qSnap.docs) {
+                    batch.delete(document.ref);
+                    deleteCount++;
+                    if (deleteCount === 500) {
+                        await batch.commit();
+                        batch = writeBatch(db);
+                        deleteCount = 0;
+                    }
                 }
+                if (deleteCount > 0) await batch.commit();
             }
-            if (deleteCount > 0) await batch.commit();
 
             statusLabel.innerText = "⏳ Đang đọc và nạp dữ liệu Excel mới...";
 
@@ -494,7 +529,13 @@
 
                     toggleButtonState('btnUploadExcel', false);
                     statusLabel.style.display = 'none';
-                    alert(`✅ HOÀN TẤT! Đã xóa dữ liệu cũ và nạp thành công ${totalAdd} học sinh siêu tốc.`);
+                    
+                    if (uploadMode === 'replace') {
+                        alert(`✅ HOÀN TẤT! Đã xóa dữ liệu cũ và nạp thành công ${totalAdd} học sinh.`);
+                    } else {
+                        alert(`✅ HOÀN TẤT! Đã nạp bổ sung thành công ${totalAdd} học sinh.`);
+                    }
+                    
                 } catch(err) {
                     console.error("Lỗi parse Excel:", err);
                     alert("Có lỗi khi đọc định dạng file Excel!");
