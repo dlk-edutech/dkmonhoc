@@ -29,7 +29,6 @@
         .user-info-card { background: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #eee; margin-bottom: 25px; }
         .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; }
         
-        .collision-box { background: #fff4e5; border: 1px solid #ffa117; padding: 20px; border-radius: 8px; margin-top: 20px; }
         hr { border: 0; border-top: 1px solid #eee; margin: 30px 0; }
         label { font-weight: bold; display: block; margin-top: 15px; color: #5f6368; }
         #upload-status { font-weight: bold; color: #d93025; margin-top: 15px; text-align: center; display: none; padding: 10px; background: #fce8e6; border-radius: 8px; }
@@ -57,26 +56,6 @@
         <h2>Đăng Nhập</h2>
         <input type="text" id="loginId" placeholder="Thông tin đăng nhập của bạn...">
         <button id="btnLogin">Đăng Nhập</button>
-
-        <div id="collision-form" class="collision-box" style="display: none;">
-            <h3 style="color: #e67e22; margin-top: 0;">Xác Minh Danh Tính</h3>
-            <p>Có nhiều người dùng cùng mã này. Vui lòng chọn thêm thông tin để xác nhận:</p>
-            <div id="filter-school" style="display: none;">
-                <label>Trường của bạn:</label>
-                <select id="sel-school"></select>
-                <button id="btn-filter-school">Tiếp tục</button>
-            </div>
-            <div id="filter-class" style="display: none;">
-                <label>Lớp của bạn:</label>
-                <select id="sel-class"></select>
-                <button id="btn-filter-class">Tiếp tục</button>
-            </div>
-            <div id="filter-dob" style="display: none;">
-                <label>Ngày sinh của bạn:</label>
-                <select id="sel-dob"></select>
-                <button id="btn-filter-dob">Hoàn tất đăng nhập</button>
-            </div>
-        </div>
     </div>
 
     <div id="admin-section" class="section">
@@ -193,7 +172,6 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-app.js";
     import { getFirestore, collection, getDocs, query, where, updateDoc, doc, setDoc, getDoc, writeBatch } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore.js";
 
-    // CAU HINH FIREBASE
     const firebaseConfig = {
       apiKey: "AIzaSyCX1OJZbxFPgK3o03SutHR2EpsNVe7IXDs",
       authDomain: "dkmonhoc.firebaseapp.com",
@@ -207,18 +185,14 @@
     const db = getFirestore(app);
 
     let currentUserDocId = null;
-    let candidateUsers = [];
     let cachedAnnouncement = null;
 
-    // XU LY LOAD NHANH LINK HUONG DAN (Tranh bi giat giao dien)
     const theLink = document.getElementById('linkHuongDan');
     const savedLink = localStorage.getItem('savedLinkHuongDan');
     
-    // Dung cache neu co de hien thi ngay lap tuc
     if (savedLink) {
         theLink.href = savedLink;
     } else {
-        // Neu chua co cache, chan click vao link cho den khi tai xong
         theLink.onclick = function(e) {
             if (theLink.getAttribute('href') === '#') {
                 e.preventDefault();
@@ -227,17 +201,16 @@
         };
     }
 
-    // Dong bo du lieu moi tu Firebase
     getDoc(doc(db, "admin", "settings")).then(d => {
         if(d.exists()) {
             cachedAnnouncement = d.data().announcement || "";
             if (d.data().linkHuongDan) {
                 theLink.href = d.data().linkHuongDan;
-                theLink.onclick = null; // Go bo lenh chan click
-                localStorage.setItem('savedLinkHuongDan', d.data().linkHuongDan); // Luu cache cho lan sau
+                theLink.onclick = null;
+                localStorage.setItem('savedLinkHuongDan', d.data().linkHuongDan);
                 theLink.style.display = 'block';
             } else {
-                theLink.style.display = 'none'; // An link neu Admin chua cai dat
+                theLink.style.display = 'none';
                 localStorage.removeItem('savedLinkHuongDan');
             }
         }
@@ -260,7 +233,7 @@
         document.getElementById(viewId).classList.add('active');
     }
 
-    // LOGIN LOGIC
+    // LOGIN LOGIC - Rut gon vi ma da la duy nhat
     document.getElementById('btnLogin').addEventListener('click', async () => {
         const id = document.getElementById('loginId').value.trim();
         if (!id) return alert("Vui lòng nhập mã!");
@@ -268,13 +241,11 @@
         toggleButtonState('btnLogin', true, 'Đang đăng nhập...');
 
         try {
-            // Check admin login first
             const d = await getDoc(doc(db, "admin", "settings"));
-            let adminId = 'admin'; // Default admin id
+            let adminId = 'admin';
             if(d.exists()) {
                 if(d.data().adminLoginId) adminId = d.data().adminLoginId;
                 if(cachedAnnouncement === null) cachedAnnouncement = d.data().announcement || "";
-                
                 document.getElementById('inputLinkHuongDan').value = d.data().linkHuongDan || '';
             }
 
@@ -291,13 +262,10 @@
                 return;
             }
 
-            candidateUsers = snap.docs.map(studentDoc => ({ id: studentDoc.id, ...studentDoc.data() }));
-
-            if (candidateUsers.length === 1) await loginAsStudent(candidateUsers[0]);
-            else {
-                document.getElementById('collision-form').style.display = 'block';
-                resolveCollision('school');
-            }
+            // Dang nhap ngay vao tai khoan dau tien tim duoc
+            const studentData = { id: snap.docs[0].id, ...snap.docs[0].data() };
+            await loginAsStudent(studentData);
+            
         } catch (error) {
             console.error(error);
             alert("Có lỗi kết nối máy chủ!");
@@ -306,45 +274,6 @@
         }
     });
 
-    // COLLISION RESOLUTION
-    function resolveCollision(step) {
-        document.getElementById('filter-school').style.display = 'none';
-        document.getElementById('filter-class').style.display = 'none';
-        document.getElementById('filter-dob').style.display = 'none';
-
-        if(step === 'school') {
-            const schools = [...new Set(candidateUsers.map(u => u.school))];
-            if(schools.length > 1) { fillSelect('sel-school', schools); document.getElementById('filter-school').style.display = 'block'; } 
-            else resolveCollision('class');
-        } else if(step === 'class') {
-            const classes = [...new Set(candidateUsers.map(u => u.className))];
-            if(classes.length > 1) { fillSelect('sel-class', classes); document.getElementById('filter-class').style.display = 'block'; } 
-            else resolveCollision('dob');
-        } else {
-            fillSelect('sel-dob', [...new Set(candidateUsers.map(u => u.dob))]);
-            document.getElementById('filter-dob').style.display = 'block';
-        }
-    }
-
-    function fillSelect(id, items) {
-        const s = document.getElementById(id);
-        s.innerHTML = '<option value="">-- Chọn --</option>';
-        items.forEach(i => s.innerHTML += `<option value="${i}">${i}</option>`);
-    }
-
-    document.getElementById('btn-filter-school').onclick = () => filterCandidates('school', 'sel-school', 'class');
-    document.getElementById('btn-filter-class').onclick = () => filterCandidates('className', 'sel-class', 'dob');
-    document.getElementById('btn-filter-dob').onclick = () => filterCandidates('dob', 'sel-dob', 'done');
-
-    function filterCandidates(field, selId, next) {
-        const val = document.getElementById(selId).value;
-        if(!val) return;
-        candidateUsers = candidateUsers.filter(u => u[field] == val);
-        if(candidateUsers.length === 1) loginAsStudent(candidateUsers[0]);
-        else resolveCollision(next);
-    }
-
-    // STUDENT LOGIC
     async function loginAsStudent(user) {
         currentUserDocId = user.id;
         document.getElementById('display-name').innerText = user.fullName;
@@ -354,8 +283,6 @@
         document.getElementById('nv1').value = user.nv1 || '';
         document.getElementById('nv2').value = user.nv2 || '';
         document.getElementById('nv3').value = user.nv3 || '';
-        
-        // Load du lieu cho hai o input moi
         document.getElementById('sdt').value = user.sdt || '';
         document.getElementById('thongtinThem').value = user.thongtinThem || '';
         
@@ -377,26 +304,31 @@
         toggleButtonState('btnSaveNV', true, 'Đang lưu...');
         try {
             await updateDoc(doc(db, "students", currentUserDocId), { 
-                nv1: nvs[0], 
-                nv2: nvs[1], 
-                nv3: nvs[2],
-                sdt: valSdt,
-                thongtinThem: valThongtinThem
+                nv1: nvs[0], nv2: nvs[1], nv3: nvs[2], sdt: valSdt, thongtinThem: valThongtinThem
             });
             alert("Lưu nguyện vọng thành công!");
         } catch (e) {
-            alert("Lưu thất bại, kiểm tra lại mạng!");
+            alert("Lưu thất bại!");
         } finally {
             toggleButtonState('btnSaveNV', false);
         }
     };
 
+    // Đổi mã đăng nhập - Kiểm tra trùng lặp
     document.getElementById('btnChangeLogin').onclick = async () => {
         const newId = document.getElementById('newLoginId').value.trim();
         if(!newId) return;
 
         toggleButtonState('btnChangeLogin', true, 'Đang cập nhật...');
         try {
+            // Kiem tra xem ma moi co bi trung voi ai khong
+            const q = query(collection(db, "students"), where("loginId", "==", newId));
+            const snap = await getDocs(q);
+            if(!snap.empty) {
+                alert("Mã đăng nhập này đã tồn tại trong hệ thống. Vui lòng chọn mã khác!");
+                return;
+            }
+
             await updateDoc(doc(db, "students", currentUserDocId), { loginId: newId });
             alert("Đổi mã đăng nhập thành công!");
             document.getElementById('newLoginId').value = '';
@@ -407,44 +339,6 @@
         }
     };
 
-    // ADMIN LOGIC
-    document.getElementById('btnLuuLink').onclick = async () => {
-        toggleButtonState('btnLuuLink', true, 'Đang cập nhật...');
-        try {
-            const newVal = document.getElementById('inputLinkHuongDan').value.trim();
-            await setDoc(doc(db, "admin", "settings"), { linkHuongDan: newVal }, { merge: true });
-            
-            if(newVal) {
-                theLink.href = newVal;
-                theLink.style.display = 'block';
-                localStorage.setItem('savedLinkHuongDan', newVal); // Cap nhat luon vao cache
-            } else {
-                theLink.style.display = 'none';
-                localStorage.removeItem('savedLinkHuongDan'); // Xoa cache
-            }
-            alert("Đã cập nhật link hướng dẫn thành công!");
-        } finally {
-            toggleButtonState('btnLuuLink', false);
-        }
-    };
-
-    document.getElementById('btnChangeAdminLogin').onclick = async () => {
-        const newId = document.getElementById('newAdminId').value.trim();
-        if(!newId) return alert("Vui lòng nhập mã đăng nhập mới!");
-
-        toggleButtonState('btnChangeAdminLogin', true, 'Đang cập nhật...');
-        try {
-            await setDoc(doc(db, "admin", "settings"), { adminLoginId: newId }, { merge: true });
-            alert("Đổi mã đăng nhập Admin thành công!");
-            document.getElementById('newAdminId').value = '';
-        } catch (e) {
-            alert("Đổi mã thất bại!");
-        } finally {
-            toggleButtonState('btnChangeAdminLogin', false);
-        }
-    };
-
-    // Giao dien Radio tuy chon upload
     const radios = document.querySelectorAll('input[name="uploadMode"]');
     const uploadWarning = document.getElementById('uploadWarning');
     const btnUploadExcel = document.getElementById('btnUploadExcel');
@@ -461,96 +355,107 @@
         });
     });
 
+    // UPLOAD LOGIC - Đảm bảo không trùng mã
     document.getElementById('btnUploadExcel').onclick = async () => {
         const file = document.getElementById('excelFile').files[0];
         if(!file) return alert("Vui lòng chọn file Excel!");
         
         const uploadMode = document.querySelector('input[name="uploadMode"]:checked').value;
-
-        if (uploadMode === 'replace') {
-            if(!confirm("Hệ thống sẽ XÓA HẾT dữ liệu học sinh cũ. Bạn có chắc chắn?")) return;
-        }
+        if (uploadMode === 'replace' && !confirm("Hệ thống sẽ XÓA HẾT dữ liệu cũ. Bạn có chắc chắn?")) return;
 
         const statusLabel = document.getElementById('upload-status');
         toggleButtonState('btnUploadExcel', true, 'Đang tiến hành...');
         statusLabel.style.display = 'block';
 
         try {
+            let existingIds = new Set();
             if (uploadMode === 'replace') {
                 statusLabel.innerText = "⏳ Đang xóa sạch dữ liệu cũ...";
                 const qSnap = await getDocs(collection(db, "students"));
                 let batch = writeBatch(db);
                 let deleteCount = 0;
-                
-                for (const document of qSnap.docs) {
-                    batch.delete(document.ref);
+                for (const d of qSnap.docs) {
+                    batch.delete(d.ref);
                     deleteCount++;
-                    if (deleteCount === 500) {
-                        await batch.commit();
-                        batch = writeBatch(db);
-                        deleteCount = 0;
-                    }
+                    if (deleteCount === 500) { await batch.commit(); batch = writeBatch(db); deleteCount = 0; }
                 }
                 if (deleteCount > 0) await batch.commit();
+            } else {
+                // Lay danh sach ma hien tai de doi soat neu la che do Append
+                statusLabel.innerText = "⏳ Đang kiểm tra dữ liệu hiện có...";
+                const qSnap = await getDocs(collection(db, "students"));
+                qSnap.forEach(d => existingIds.add(String(d.data().loginId)));
             }
-
-            statusLabel.innerText = "⏳ Đang đọc và nạp dữ liệu Excel mới...";
 
             const reader = new FileReader();
             reader.onload = async (e) => {
-                try {
-                    const data = new Uint8Array(e.target.result);
-                    const wb = XLSX.read(data, {type: 'array'});
-                    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header: 1});
-                    
-                    let addBatch = writeBatch(db);
-                    let addCount = 0;
-                    let totalAdd = 0;
+                const data = new Uint8Array(e.target.result);
+                const wb = XLSX.read(data, {type: 'array'});
+                const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header: 1});
+                
+                let addBatch = writeBatch(db);
+                let addCount = 0, totalAdd = 0, skipCount = 0;
+                let processedInFile = new Set(); // De loc trung ngay trong file Excel
 
-                    for(let i=1; i<rows.length; i++) {
-                        const r = rows[i];
-                        if(!r[0]) continue;
-                        
-                        const newDocRef = doc(collection(db, "students"));
-                        addBatch.set(newDocRef, {
-                            loginId: String(r[0]), fullName: r[1]||'', school: r[2]||'', className: r[3]||'', dob: String(r[4]||''), gender: r[5]||'', nv1:'', nv2:'', nv3:'', sdt:'', thongtinThem:''
-                        });
+                for(let i=1; i<rows.length; i++) {
+                    const r = rows[i];
+                    const mId = String(r[0] || '').trim();
+                    if(!mId) continue;
 
-                        addCount++;
-                        totalAdd++;
-
-                        if (addCount === 500) {
-                            await addBatch.commit();
-                            addBatch = writeBatch(db);
-                            addCount = 0;
-                        }
+                    // Kiem tra trung lap trong file hoac trung lap voi Database
+                    if (processedInFile.has(mId) || existingIds.has(mId)) {
+                        skipCount++;
+                        continue;
                     }
-                    if (addCount > 0) await addBatch.commit();
 
-                    toggleButtonState('btnUploadExcel', false);
-                    statusLabel.style.display = 'none';
-                    
-                    if (uploadMode === 'replace') {
-                        alert(`✅ HOÀN TẤT! Đã xóa dữ liệu cũ và nạp thành công ${totalAdd} học sinh.`);
-                    } else {
-                        alert(`✅ HOÀN TẤT! Đã nạp bổ sung thành công ${totalAdd} học sinh.`);
-                    }
-                    
-                } catch(err) {
-                    console.error("Lỗi parse Excel:", err);
-                    alert("Có lỗi khi đọc định dạng file Excel!");
-                    toggleButtonState('btnUploadExcel', false);
-                    statusLabel.style.display = 'none';
+                    const newDocRef = doc(collection(db, "students"));
+                    addBatch.set(newDocRef, {
+                        loginId: mId, fullName: r[1]||'', school: r[2]||'', className: r[3]||'', dob: String(r[4]||''), gender: r[5]||'', nv1:'', nv2:'', nv3:'', sdt:'', thongtinThem:''
+                    });
+
+                    processedInFile.add(mId);
+                    addCount++; totalAdd++;
+
+                    if (addCount === 500) { await addBatch.commit(); addBatch = writeBatch(db); addCount = 0; }
                 }
+                if (addCount > 0) await addBatch.commit();
+
+                toggleButtonState('btnUploadExcel', false);
+                statusLabel.style.display = 'none';
+                alert(`✅ HOÀN TẤT!\n- Đã nạp thành công: ${totalAdd} học sinh.\n- Đã bỏ qua: ${skipCount} dòng (do trùng mã đăng nhập).`);
             };
             reader.readAsArrayBuffer(file);
-
         } catch (error) {
-            console.error("Lỗi Firestore:", error);
-            alert("Có lỗi kết nối cơ sở dữ liệu!");
+            console.error(error);
+            alert("Có lỗi xảy ra!");
             toggleButtonState('btnUploadExcel', false);
-            statusLabel.style.display = 'none';
         }
+    };
+
+    document.getElementById('btnLuuLink').onclick = async () => {
+        toggleButtonState('btnLuuLink', true, 'Đang cập nhật...');
+        try {
+            const newVal = document.getElementById('inputLinkHuongDan').value.trim();
+            await setDoc(doc(db, "admin", "settings"), { linkHuongDan: newVal }, { merge: true });
+            if(newVal) {
+                theLink.href = newVal; theLink.style.display = 'block';
+                localStorage.setItem('savedLinkHuongDan', newVal);
+            } else {
+                theLink.style.display = 'none'; localStorage.removeItem('savedLinkHuongDan');
+            }
+            alert("Đã cập nhật link hướng dẫn!");
+        } finally { toggleButtonState('btnLuuLink', false); }
+    };
+
+    document.getElementById('btnChangeAdminLogin').onclick = async () => {
+        const newId = document.getElementById('newAdminId').value.trim();
+        if(!newId) return alert("Vui lòng nhập mã mới!");
+        toggleButtonState('btnChangeAdminLogin', true, 'Đang cập nhật...');
+        try {
+            await setDoc(doc(db, "admin", "settings"), { adminLoginId: newId }, { merge: true });
+            alert("Đã đổi mã Admin!");
+            document.getElementById('newAdminId').value = '';
+        } finally { toggleButtonState('btnChangeAdminLogin', false); }
     };
 
     document.getElementById('btnExportExcel').onclick = async () => {
@@ -558,24 +463,15 @@
         try {
             const snap = await getDocs(collection(db, "students"));
             const data = snap.docs.map(d => ({
-                "Mã ĐN": d.data().loginId, 
-                "Họ Tên": d.data().fullName, 
-                "Trường": d.data().school, 
-                "Lớp": d.data().className, 
-                "Ngày sinh": d.data().dob, 
-                "NV1": d.data().nv1, 
-                "NV2": d.data().nv2, 
-                "NV3": d.data().nv3,
-                "SĐT": d.data().sdt || '',
-                "Thông tin thêm": d.data().thongtinThem || ''
+                "Mã ĐN": d.data().loginId, "Họ Tên": d.data().fullName, "Trường": d.data().school, "Lớp": d.data().className, 
+                "Ngày sinh": d.data().dob, "NV1": d.data().nv1, "NV2": d.data().nv2, "NV3": d.data().nv3,
+                "SĐT": d.data().sdt || '', "Thông tin thêm": d.data().thongtinThem || ''
             }));
             const ws = XLSX.utils.json_to_sheet(data);
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, "KetQua");
             XLSX.writeFile(wb, "KetQua_DangKy.xlsx");
-        } finally {
-            toggleButtonState('btnExportExcel', false);
-        }
+        } finally { toggleButtonState('btnExportExcel', false); }
     };
 
     document.getElementById('btnSaveMessage').onclick = async () => {
@@ -585,9 +481,7 @@
             await setDoc(doc(db, "admin", "settings"), { announcement: newVal }, { merge: true });
             cachedAnnouncement = newVal;
             alert("Đã cập nhật thông báo!");
-        } finally {
-            toggleButtonState('btnSaveMessage', false);
-        }
+        } finally { toggleButtonState('btnSaveMessage', false); }
     };
 
     const logout = () => { currentUserDocId = null; showView('login-section'); document.getElementById('loginId').value=''; };
