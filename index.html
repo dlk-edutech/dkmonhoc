@@ -117,7 +117,7 @@
                         </tr>
                     </thead>
                     <tbody id="thanBangSubAdmin">
-                        </tbody>
+                    </tbody>
                 </table>
             </div>
         </div>
@@ -178,7 +178,7 @@
         <button id="btnSaveNV" class="btn-success" style="margin-top: 20px;">Lưu Đăng Ký</button>
         <hr> 
         <h3>Cài Đặt Tài Khoản</h3> 
-        <input type="text" id="newLoginId" placeholder="Nhập mã đăng nhập mới..."> 
+        <input type="text" id="newLoginId" placeholder="Nhập mã đăng nhập mới (VD: Nam0510)..."> 
         <button id="btnChangeLogin">Cập Nhật Mã Đăng Nhập</button> 
     </div>
 </div>
@@ -222,7 +222,7 @@
                 localStorage.removeItem('savedLinkHuongDan'); 
             } 
         } 
-    }).catch(e => console.error("Loi tai cai dat he thong:", e));
+    }).catch(e => console.error("Loi tai he thong:", e));
 
     const toggleButtonState = (btnId, isLoading, text = 'Đang xử lý...') => { 
         const btn = document.getElementById(btnId); 
@@ -241,7 +241,7 @@
         document.getElementById(viewId).classList.add('active'); 
     }
 
-    // LOGIN LOGIC - Rut gon vi ma da la duy nhat 
+    // LOGIN LOGIC
     document.getElementById('btnLogin').addEventListener('click', async () => { 
         const id = document.getElementById('loginId').value.trim(); 
         if (!id) return alert("Vui lòng nhập mã!");
@@ -276,12 +276,11 @@
                 return; 
             }
             
-            // Dang nhap ngay vao tai khoan dau tien tim duoc 
             const studentData = { id: snap.docs[0].id, ...snap.docs[0].data() }; 
             await loginAsStudent(studentData); 
         } catch (error) { 
             console.error(error); 
-            alert("Có lỗi kết nối máy chủ!"); 
+            alert("Có lỗi kết nối máy chủ! Hãy kiểm tra CORS hoặc mạng."); 
         } finally { 
             toggleButtonState('btnLogin', false); 
         } 
@@ -322,10 +321,18 @@
         } 
     };
 
-    // Đổi mã đăng nhập - Kiểm tra trùng lặp 
+    // Doi ma dang nhap - Kiem tra trung lap va Dinh dang
     document.getElementById('btnChangeLogin').onclick = async () => { 
         const newId = document.getElementById('newLoginId').value.trim(); 
         if(!newId) return;
+
+        // Kiem tra dinh dang Tenxxxx (Ten + 4 so)
+        const regexDinhDang = /^[A-Za-z]+[0-9]{4}$/;
+        if(!regexDinhDang.test(newId)) {
+            alert("Mã đăng nhập phải theo định dạng Tenxxxx (Tên không dấu + 4 số ngày tháng sinh)!");
+            return;
+        }
+
         toggleButtonState('btnChangeLogin', true, 'Đang cập nhật...'); 
         try { 
             // Kiem tra xem ma moi co bi trung voi ai khong 
@@ -361,7 +368,7 @@
         }); 
     });
 
-    // UPLOAD LOGIC - Đảm bảo không trùng mã 
+    // UPLOAD LOGIC 
     document.getElementById('btnUploadExcel').onclick = async () => { 
         const file = document.getElementById('excelFile').files[0]; 
         if(!file) return alert("Vui lòng chọn file Excel!"); 
@@ -403,14 +410,13 @@
                 const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header: 1}); 
                 let addBatch = writeBatch(db); 
                 let addCount = 0, totalAdd = 0, skipCount = 0; 
-                let processedInFile = new Set(); // De loc trung ngay trong file Excel
+                let processedInFile = new Set(); 
                 
                 for(let i=1; i<rows.length; i++) { 
                     const r = rows[i]; 
                     const mId = String(r[0] || '').trim(); 
                     if(!mId) continue;
                     
-                    // Kiem tra trung lap trong file hoac trung lap voi Database 
                     if (processedInFile.has(mId) || existingIds.has(mId)) { 
                         skipCount++; 
                         continue; 
